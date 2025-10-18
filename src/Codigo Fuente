@@ -1,0 +1,229 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+
+enum EstadoSalon
+{
+    Libre,
+    Ocupado,
+    EnLimpieza
+}
+
+enum TipoEvento
+{
+    Ninguno,
+    Clase,
+    Seminario,
+    Taller,
+    Conferencia
+}
+
+class Salon
+{
+    public int Numero { get; private set; }
+    public EstadoSalon Estado { get; set; }
+    public TipoEvento EventoActual { get; set; }
+
+    public Salon(int numero)
+    {
+        Numero = numero;
+        Estado = EstadoSalon.Libre;
+        EventoActual = TipoEvento.Ninguno;
+    }
+
+    public void Asignar(TipoEvento tipo)
+    {
+        Estado = EstadoSalon.Ocupado;
+        EventoActual = tipo;
+        Console.WriteLine($"Salón {Numero} asignado para un evento: {tipo}.");
+    }
+
+    public void Liberar()
+    {
+        Estado = EstadoSalon.EnLimpieza;
+        Console.WriteLine($"Salón {Numero} ha sido liberado y está en limpieza.");
+    }
+
+    public void Limpiar()
+    {
+        Estado = EstadoSalon.Libre;
+        EventoActual = TipoEvento.Ninguno;
+        Console.WriteLine($"Salón {Numero} ha sido limpiado y está disponible.");
+    }
+}
+
+class ObjectPoolSalones
+{
+    private readonly List<Salon> salones;
+
+    public ObjectPoolSalones(int cantidad)
+    {
+        salones = new List<Salon>();
+        for (int i = 1; i <= cantidad; i++)
+        {
+            salones.Add(new Salon(i));
+        }
+    }
+
+    public void MostrarEstadoSalones()
+    {
+        Console.WriteLine("\nEstado actual de los salones:");
+        foreach (var s in salones)
+        {
+            Console.WriteLine($" - Salón {s.Numero}: {s.Estado}, Evento: {s.EventoActual}");
+        }
+        Console.WriteLine();
+    }
+
+    public void AsignarSalon(int numero, TipoEvento tipo)
+    {
+        var salon = salones.FirstOrDefault(s => s.Numero == numero);
+        if (salon == null)
+        {
+            Console.WriteLine("El salón no existe.");
+            return;
+        }
+
+        if (salon.Estado == EstadoSalon.Libre)
+        {
+            salon.Asignar(tipo);
+        }
+        else
+        {
+            Console.WriteLine($"El salón {numero} no está disponible. Estado actual: {salon.Estado}");
+        }
+    }
+
+    public void LiberarSalon(int numero)
+    {
+        var salon = salones.FirstOrDefault(s => s.Numero == numero);
+        if (salon == null)
+        {
+            Console.WriteLine("El salón no existe.");
+            return;
+        }
+
+        if (salon.Estado == EstadoSalon.Ocupado)
+        {
+            salon.Liberar();
+
+            Thread limpiezaThread = new Thread(() =>
+            {
+                Thread.Sleep(3000);
+                salon.Limpiar();
+            });
+
+            limpiezaThread.Start();
+            limpiezaThread.Join();
+        }
+        else
+        {
+            Console.WriteLine($"El salón {numero} no puede liberarse. Estado actual: {salon.Estado}");
+        }
+    }
+}
+
+class OrganizadorEventos
+{
+    private static OrganizadorEventos _instancia;
+    private static readonly object _lock = new object();
+    private ObjectPoolSalones pool;
+
+    private OrganizadorEventos()
+    {
+        pool = new ObjectPoolSalones(5);
+    }
+
+    public static OrganizadorEventos Instancia
+    {
+        get
+        {
+            if (_instancia == null)
+            {
+                lock (_lock)
+                {
+                    if (_instancia == null)
+                    {
+                        _instancia = new OrganizadorEventos();
+                    }
+                }
+            }
+            return _instancia;
+        }
+    }
+
+    public void Menu()
+    {
+        while (true)
+        {
+            Console.WriteLine("\n--- MENÚ ORGANIZADOR DE EVENTOS ACADÉMICOS ---");
+            Console.WriteLine("1. Ver estado de salones");
+            Console.WriteLine("2. Asignar salón para evento");
+            Console.WriteLine("3. Liberar salón (limpieza automática)");
+            Console.WriteLine("4. Salir");
+            Console.Write("Seleccione una opción: ");
+            var opcion = Console.ReadLine();
+
+            switch (opcion)
+            {
+                case "1":
+                    pool.MostrarEstadoSalones();
+                    break;
+
+                case "2":
+                    Console.Write("Ingrese número del salón a asignar: ");
+                    if (int.TryParse(Console.ReadLine(), out int numAsignar))
+                    {
+                        Console.WriteLine("Seleccione tipo de evento:");
+                        foreach (var tipo in Enum.GetValues(typeof(TipoEvento)))
+                        {
+                            if ((TipoEvento)tipo != TipoEvento.Ninguno)
+                                Console.WriteLine($" - {(int)tipo} = {tipo}");
+                        }
+
+                        if (int.TryParse(Console.ReadLine(), out int tipoEvento) &&
+                            Enum.IsDefined(typeof(TipoEvento), tipoEvento) &&
+                            (TipoEvento)tipoEvento != TipoEvento.Ninguno)
+                        {
+                            pool.AsignarSalon(numAsignar, (TipoEvento)tipoEvento);
+                        }
+                        else
+                        {
+                            Console.WriteLine("Tipo de evento inválido.");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("Número inválido.");
+                    }
+                    break;
+
+                case "3":
+                    Console.Write("Ingrese número del salón a liberar: ");
+                    if (int.TryParse(Console.ReadLine(), out int numLiberar))
+                        pool.LiberarSalon(numLiberar);
+                    else
+                        Console.WriteLine("Número inválido.");
+                    break;
+
+                case "4":
+                    Console.WriteLine("Saliendo del sistema...");
+                    return;
+
+                default:
+                    Console.WriteLine("Opción inválida. Intente de nuevo.");
+                    break;
+            }
+        }
+    }
+}
+
+class Program
+{
+    static void Main()
+    {
+        var organizador = OrganizadorEventos.Instancia;
+        organizador.Menu();
+    }
+}
